@@ -67,3 +67,29 @@ progress::-webkit-progress-value { background: linear-gradient(90deg, var(--acce
   .hero, .layout { grid-template-columns: 1fr; }
   .profile-card { grid-template-columns: 1fr; }
 }
+.media-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+  margin: 18px 0 4px;
+}
+.media-item {
+  margin: 0;
+  overflow: hidden;
+  border-radius: 22px;
+  background: #0b1220;
+  border: 1px solid rgba(148, 163, 184, .18);
+}
+.media-item img,
+.media-item video {
+  display: block;
+  width: 100%;
+  max-height: 420px;
+  object-fit: cover;
+  background: #020617;
+}
+.media-item figcaption {
+  padding: 10px 12px;
+  color: var(--muted);
+  font-size: .92rem;
+}

@@ -151,6 +151,45 @@ function renderTelegramProfile(result) {
   $('#matchPercent').textContent = `${result.percent}%`;
   $('#matchProgress').value = result.percent;
   $('#matchReason').textContent = result.reason;
+  renderMedia(result.media || []);
+}
+
+function renderMedia(mediaItems) {
+  const gallery = $('#mediaGallery');
+  gallery.innerHTML = '';
+  gallery.hidden = mediaItems.length === 0;
+
+  for (const item of mediaItems) {
+    const wrapper = document.createElement('figure');
+    wrapper.className = 'media-item';
+
+    if (item.skipped) {
+      wrapper.textContent = item.reason || 'Медіа не можна показати.';
+    } else if (item.kind === 'video') {
+      const video = document.createElement('video');
+      video.src = item.dataUrl;
+      video.controls = true;
+      video.preload = 'metadata';
+      wrapper.append(video);
+    } else {
+      const image = document.createElement('img');
+      image.src = item.dataUrl;
+      image.alt = item.fileName || 'Фото анкети';
+      wrapper.append(image);
+    }
+
+    const caption = document.createElement('figcaption');
+    caption.textContent = `${item.kind === 'video' ? 'Відео' : 'Фото'}${item.size ? ` · ${formatBytes(item.size)}` : ''}`;
+    wrapper.append(caption);
+    gallery.append(wrapper);
+  }
+}
+
+function formatBytes(bytes) {
+  if (!bytes) return '0 Б';
+  const units = ['Б', 'КБ', 'МБ', 'ГБ'];
+  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  return `${(bytes / 1024 ** index).toFixed(index ? 1 : 0)} ${units[index]}`;
 }
 
 async function restoreSession() {

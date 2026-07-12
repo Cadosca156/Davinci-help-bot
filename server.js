@@ -4,6 +4,7 @@ const path = require('node:path');
 const express = require('express');
 const { TelegramClient, Api } = require('telegram');
 const { StringSession } = require('telegram/sessions');
+const { computeCheck } = require('telegram/Password');
 
 const PORT = Number(process.env.PORT || 3000);
 const DATA_DIR = path.join(__dirname, 'data');
@@ -19,11 +20,94 @@ let savedSessions = {};
 app.use(express.json({ limit: '1mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+
 function normalizeList(value = '') {
   return String(value)
     .split(/[\n,]/)
-    .map((item) => item.trim().toLowerCase())
+    .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function normalizeSearchValue(value = '') {
+  return String(value)
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[’'`ʼґ]/g, (char) => (char === 'ґ' ? 'г' : ''))
+    .replace(/[^\p{L}\p{N}\s-]/gu, ' ')
+    .replace(/-/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function stemWord(word) {
+  const normalized = normalizeSearchValue(word);
+  if (normalized.length <= 4) return normalized;
+
+  const suffixes = [
+    'ського', 'цького', 'енький', 'енька', 'еньке', 'ання', 'ення', 'иями', 'ями', 'ами',
+    'ого', 'ому', 'ими', 'ими', 'ою', 'ею', 'ією', 'ість', 'істю', 'ний', 'ній', 'ська',
+    'ське', 'ські', 'ого', 'его', 'ими', 'ої', 'ій', 'их', 'им', 'ам', 'ям', 'ах', 'ях',
+    'ою', 'ею', 'ю', 'а', 'я', 'и', 'і', 'ї', 'е', 'у', 'о', 'є', 'й', 'ь',
+  ];
+
+  for (const suffix of suffixes) {
+    if (normalized.endsWith(suffix) && normalized.length - suffix.length >= 3) {
+      return normalized.slice(0, -suffix.length);
+    }
+  }
+
+  return normalized;
+}
+
+function tokenizeSearchText(value = '') {
+  return normalizeSearchValue(value)
+    .split(' ')
+    .map(stemWord)
+    .filter((word) => word.length >= 2);
+}
+
+function levenshteinDistance(a, b) {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+
+  const previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  const current = new Array(b.length + 1);
+
+  for (let i = 1; i <= a.length; i += 1) {
+    current[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      current[j] = Math.min(
+        previous[j] + 1,
+        current[j - 1] + 1,
+        previous[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+    }
+    previous.splice(0, previous.length, ...current);
+  }
+
+  return previous[b.length];
+}
+
+function wordsAreSimilar(queryWord, candidateWord) {
+  if (!queryWord || !candidateWord) return false;
+  if (queryWord === candidateWord) return true;
+  if (queryWord.length >= 4 && candidateWord.length >= 4 && (queryWord.includes(candidateWord) || candidateWord.includes(queryWord))) return true;
+
+  const longest = Math.max(queryWord.length, candidateWord.length);
+  if (longest < 5) return false;
+  const similarity = 1 - levenshteinDistance(queryWord, candidateWord) / longest;
+  return similarity >= 0.72;
+}
+
+function findSimilarTerms(queries, text) {
+  const textTokens = tokenizeSearchText(text);
+  return queries.filter((query) => {
+    const queryTokens = tokenizeSearchText(query);
+    if (!queryTokens.length) return false;
+    return queryTokens.every((queryToken) => textTokens.some((textToken) => wordsAreSimilar(queryToken, textToken)));
+  });
 }
 
 function createToken() {
@@ -58,6 +142,46 @@ async function buildClient(apiId, apiHash, session = '') {
   });
   await client.connect();
   return client;
+}
+
+
+function getMessageMediaMeta(message) {
+  const media = message.media;
+  if (!media) return null;
+
+  if (media.photo) {
+    return { kind: 'image', mimeType: 'image/jpeg', fileName: 'profile-photo.jpg', size: 0 };
+  }
+
+  const document = media.document;
+  const mimeType = document?.mimeType || '';
+  if (!document || (!mimeType.startsWith('image/') && !mimeType.startsWith('video/'))) return null;
+
+  return {
+    kind: mimeType.startsWith('video/') ? 'video' : 'image',
+    mimeType,
+    fileName: document.attributes?.find((attribute) => attribute.fileName)?.fileName || `profile-media.${mimeType.split('/')[1] || 'bin'}`,
+    size: Number(document.size || 0),
+  };
+}
+
+async function extractMessageMedia(client, message) {
+  const meta = getMessageMediaMeta(message);
+  if (!meta) return [];
+
+  const maxBytes = 20 * 1024 * 1024;
+  if (meta.size > maxBytes) {
+    return [{ ...meta, skipped: true, reason: 'Медіа більше 20 МБ, тому не вбудовано у сторінку.' }];
+  }
+
+  const buffer = await client.downloadMedia(message, { workers: 1 });
+  if (!buffer || !buffer.length) return [];
+
+  return [{
+    ...meta,
+    size: buffer.length,
+    dataUrl: `data:${meta.mimeType};base64,${Buffer.from(buffer).toString('base64')}`,
+  }];
 }
 
 function requireClient(req, res, next) {
@@ -122,7 +246,9 @@ app.post('/api/auth/sign-in', async (req, res) => {
       if (!password) {
         return res.status(401).json({ needsPassword: true, error: 'Для акаунта увімкнено 2FA. Введіть пароль.' });
       }
-      await flow.client.checkPassword(password);
+      const passwordInfo = await flow.client.invoke(new Api.account.GetPassword());
+      const passwordCheck = await computeCheck(passwordInfo, password);
+      await flow.client.invoke(new Api.auth.CheckPassword({ password: passwordCheck }));
     }
 
     const sessionToken = createToken();
@@ -213,11 +339,11 @@ app.post('/api/telegram/scan-once', requireClient, async (req, res) => {
     if (!message) return res.status(404).json({ error: 'Повідомлення від бота не знайдено. Напишіть /start боту з додатка.' });
 
     const text = message.message || '';
+    const media = await extractMessageMedia(req.telegram.client, message);
     const userInterests = normalizeList(interests);
     const stopWords = normalizeList(keywords);
-    const lowerText = text.toLowerCase();
-    const matchedInterests = userInterests.filter((item) => lowerText.includes(item));
-    const matchedKeywords = stopWords.filter((word) => lowerText.includes(word));
+    const matchedInterests = findSimilarTerms(userInterests, text);
+    const matchedKeywords = findSimilarTerms(stopWords, text);
     const percent = userInterests.length ? Math.round((matchedInterests.length / userInterests.length) * 100) : 0;
     const shouldStop = percent >= Number(threshold) || matchedKeywords.length > 0;
 
@@ -230,6 +356,7 @@ app.post('/api/telegram/scan-once', requireClient, async (req, res) => {
       percent,
       matchedInterests,
       matchedKeywords,
+      media,
       shouldStop,
       reason: shouldStop
         ? matchedKeywords.length

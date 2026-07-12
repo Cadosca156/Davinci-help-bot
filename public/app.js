@@ -119,6 +119,7 @@ async function scanOnce() {
     threshold: threshold.value,
     interests: $('#interests').value,
     keywords: $('#keywords').value,
+    aiEnabled: $('#aiEnabled').checked,
   });
   if (!result) {
     stopTimer();
@@ -151,7 +152,25 @@ function renderTelegramProfile(result) {
   $('#matchPercent').textContent = `${result.percent}%`;
   $('#matchProgress').value = result.percent;
   $('#matchReason').textContent = result.reason;
+  renderAiAnalysis(result);
   renderMedia(result.media || []);
+}
+
+function renderAiAnalysis(result) {
+  const aiBox = $('#aiAnalysis');
+  const analysis = result.aiAnalysis;
+  if (!analysis || (!analysis.bonusPoints && !analysis.explanation && !analysis.warning)) {
+    aiBox.textContent = '';
+    return;
+  }
+
+  const parts = [];
+  if (Number.isFinite(result.basePercent)) parts.push(`База: ${result.basePercent}%`);
+  if (result.aiBonus) parts.push(`AI бонус: +${result.aiBonus}%`);
+  if (analysis.usedOpenAI) parts.push('OpenAI vision/text увімкнено');
+  if (analysis.explanation) parts.push(analysis.explanation);
+  if (analysis.warning) parts.push(`Попередження: ${analysis.warning}`);
+  aiBox.textContent = parts.join(' · ');
 }
 
 function renderMedia(mediaItems) {

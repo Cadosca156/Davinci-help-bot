@@ -110,6 +110,206 @@ function findSimilarTerms(queries, text) {
   });
 }
 
+const TRANSLATION_GROUPS = [
+  ['music', 'музика', 'музыка'],
+  ['rock', 'рок'],
+  ['pop', 'поп', 'попса'],
+  ['rap', 'реп', 'hip hop', 'хіп хоп', 'хип хоп'],
+  ['r&b', 'rnb', 'рнб'],
+  ['electronic', 'електроніка', 'электроника', 'edm'],
+  ['jazz', 'джаз'],
+  ['classical', 'класика', 'classical music'],
+  ['indie', 'інді', 'инди'],
+  ['metal', 'метал'],
+  ['game', 'games', 'ігри', 'игры', 'gaming', 'геймінг', 'гейминг'],
+  ['shooter', 'шутер', 'стрілялки', 'стрелялки'],
+  ['rpg', 'рольові ігри', 'ролевые игры'],
+  ['strategy', 'стратегія', 'стратегия'],
+  ['moba', 'моба'],
+  ['anime', 'аніме', 'аниме'],
+  ['travel', 'подорожі', 'путешествия', 'travelling'],
+  ['sport', 'спорт', 'sports'],
+  ['books', 'книги', 'література', 'литература'],
+  ['movies', 'фільми', 'кино', 'movies'],
+];
+
+const ARTIST_GENRES = [
+  { names: ['the weeknd', 'weeknd', 'вікенд'], genres: ['pop', 'r&b', 'synth pop'] },
+  { names: ['billie eilish', 'біллі айліш', 'билли айлиш'], genres: ['pop', 'alternative', 'indie'] },
+  { names: ['taylor swift', 'тейлор свіфт', 'тейлор свифт'], genres: ['pop', 'country', 'indie'] },
+  { names: ['eminem', 'емінем', 'эminem'], genres: ['rap', 'hip hop'] },
+  { names: ['drake', 'дрейк'], genres: ['rap', 'hip hop', 'r&b'] },
+  { names: ['metallica', 'металіка', 'металлика'], genres: ['metal', 'rock'] },
+  { names: ['nirvana', 'нірвана', 'нирвана'], genres: ['rock', 'grunge'] },
+  { names: ['шклярський', 'скрябін', 'скрябин', 'skryabin'], genres: ['pop rock', 'rock', 'ukrainian music'] },
+  { names: ['океан ельзи', 'okean elzy'], genres: ['rock', 'pop rock', 'ukrainian music'] },
+  { names: ['hardkiss', 'the hardkiss', 'хардкіс'], genres: ['rock', 'pop rock', 'alternative'] },
+  { names: ['alyona alyona', 'альона альона'], genres: ['rap', 'hip hop', 'ukrainian music'] },
+  { names: ['monatik', 'монатік', 'монатик'], genres: ['pop', 'dance'] },
+];
+
+const GAME_GENRES = [
+  { names: ['counter strike', 'counter-strike', 'cs2', 'кс', 'контра'], genres: ['shooter', 'fps', 'esports'] },
+  { names: ['dota', 'dota 2', 'дота'], genres: ['moba', 'strategy', 'esports'] },
+  { names: ['league of legends', 'lol', 'ліга легенд', 'лига легенд'], genres: ['moba', 'strategy', 'esports'] },
+  { names: ['valorant', 'валорант'], genres: ['shooter', 'fps', 'esports'] },
+  { names: ['minecraft', 'майнкрафт'], genres: ['sandbox', 'survival', 'creative'] },
+  { names: ['genshin impact', 'геншин'], genres: ['rpg', 'anime', 'adventure'] },
+  { names: ['witcher', 'відьмак', 'ведьмак'], genres: ['rpg', 'fantasy', 'adventure'] },
+  { names: ['stalker', 's.t.a.l.k.e.r', 'сталкер'], genres: ['shooter', 'survival', 'post apocalyptic'] },
+  { names: ['civilization', 'цивілізація', 'цивилизация'], genres: ['strategy', 'turn based'] },
+];
+
+function expandTermsWithTranslations(terms) {
+  const expanded = new Set(terms);
+  for (const term of terms) {
+    const normalizedTerm = normalizeSearchValue(term);
+    for (const group of TRANSLATION_GROUPS) {
+      if (group.some((variant) => wordsAreSimilar(stemWord(normalizedTerm), stemWord(variant)) || normalizeSearchValue(variant) === normalizedTerm)) {
+        group.forEach((variant) => expanded.add(variant));
+      }
+    }
+  }
+  return [...expanded];
+}
+
+function detectKnownConcepts(text) {
+  const artists = [];
+  const games = [];
+  for (const artist of ARTIST_GENRES) {
+    if (findSimilarTerms(artist.names, text).length) artists.push(artist);
+  }
+  for (const game of GAME_GENRES) {
+    if (findSimilarTerms(game.names, text).length) games.push(game);
+  }
+  return { artists, games };
+}
+
+function analyzeKnownConceptBonus(text, interests, keywords) {
+  const concepts = detectKnownConcepts(text);
+  const preferenceTerms = expandTermsWithTranslations([...interests, ...keywords]);
+  const matchedConcepts = [];
+
+  for (const artist of concepts.artists) {
+    const matchedGenres = findSimilarTerms(preferenceTerms, artist.genres.join(' '));
+    if (matchedGenres.length) {
+      matchedConcepts.push({ type: 'artist', name: artist.names[0], genres: artist.genres, matchedBy: matchedGenres });
+    }
+  }
+
+  for (const game of concepts.games) {
+    const matchedGenres = findSimilarTerms(preferenceTerms, game.genres.join(' '));
+    if (matchedGenres.length) {
+      matchedConcepts.push({ type: 'game', name: game.names[0], genres: game.genres, matchedBy: matchedGenres });
+    }
+  }
+
+  return {
+    matchedConcepts,
+    bonusPoints: Math.min(20, matchedConcepts.length * 8),
+    explanation: matchedConcepts.length
+      ? `Знайдено жанрові збіги: ${matchedConcepts.map((item) => `${item.name} → ${item.genres.join(', ')}`).join('; ')}`
+      : '',
+  };
+}
+
+function extractResponseText(response) {
+  if (response.output_text) return response.output_text;
+  const chunks = [];
+  for (const item of response.output || []) {
+    for (const content of item.content || []) {
+      if (content.text) chunks.push(content.text);
+    }
+  }
+  return chunks.join('\n');
+}
+
+async function analyzeProfileWithOpenAI({ text, media, interests, keywords }) {
+  if (!process.env.OPENAI_API_KEY) return null;
+
+  const imageInputs = media
+    .filter((item) => item.kind === 'image' && item.dataUrl && !item.skipped)
+    .slice(0, 3)
+    .map((item) => ({ type: 'input_image', image_url: item.dataUrl }));
+
+  const response = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: process.env.OPENAI_MODEL || 'gpt-5.6',
+      input: [
+        {
+          role: 'system',
+          content: 'You analyze dating profile text and images. Identify artists, games, hobbies, genres, multilingual keyword matches, and return strict JSON only.',
+        },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'input_text',
+              text: `Profile text:\n${text || '(no text)'}\n\nUser interests: ${interests.join(', ')}\nStop keywords: ${keywords.join(', ')}\n\nReturn JSON with keys: bonusPoints number 0-30, matchedConcepts array, translatedMatches array, explanation string in Ukrainian. Add bonus when an artist/game/object in text or image belongs to a genre/category matching interests or keywords in any language.`,
+            },
+            ...imageInputs,
+          ],
+        },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`OpenAI analysis failed: ${errorText}`);
+  }
+
+  const data = await response.json();
+  const outputText = extractResponseText(data).trim().replace(/^```json\s*|```$/g, '');
+  const parsed = JSON.parse(outputText);
+  return {
+    bonusPoints: Math.max(0, Math.min(30, Number(parsed.bonusPoints || 0))),
+    matchedConcepts: Array.isArray(parsed.matchedConcepts) ? parsed.matchedConcepts : [],
+    translatedMatches: Array.isArray(parsed.translatedMatches) ? parsed.translatedMatches : [],
+    explanation: parsed.explanation || '',
+    usedOpenAI: true,
+  };
+}
+
+async function buildSemanticAnalysis({ text, media, interests, keywords, aiEnabled }) {
+  const expandedInterests = expandTermsWithTranslations(interests);
+  const expandedKeywords = expandTermsWithTranslations(keywords);
+  const knownConcepts = analyzeKnownConceptBonus(text, interests, keywords);
+  const analysis = {
+    enabled: Boolean(aiEnabled),
+    usedOpenAI: false,
+    bonusPoints: knownConcepts.bonusPoints,
+    matchedConcepts: knownConcepts.matchedConcepts,
+    translatedMatches: [],
+    explanation: knownConcepts.explanation,
+    warning: '',
+  };
+
+  if (aiEnabled) {
+    try {
+      const openAiAnalysis = await analyzeProfileWithOpenAI({ text, media, interests, keywords });
+      if (openAiAnalysis) {
+        analysis.usedOpenAI = true;
+        analysis.bonusPoints = Math.min(30, analysis.bonusPoints + openAiAnalysis.bonusPoints);
+        analysis.matchedConcepts = [...analysis.matchedConcepts, ...openAiAnalysis.matchedConcepts];
+        analysis.translatedMatches = openAiAnalysis.translatedMatches;
+        analysis.explanation = [analysis.explanation, openAiAnalysis.explanation].filter(Boolean).join(' ');
+      } else {
+        analysis.warning = 'OPENAI_API_KEY не задано, використано локальний словниковий AI-шар без аналізу фото.';
+      }
+    } catch (error) {
+      analysis.warning = safeError(error);
+    }
+  }
+
+  return { expandedInterests, expandedKeywords, analysis };
+}
+
 function createToken() {
   return crypto.randomBytes(24).toString('hex');
 }
@@ -331,7 +531,7 @@ app.post('/api/telegram/action', requireClient, async (req, res) => {
 });
 
 app.post('/api/telegram/scan-once', requireClient, async (req, res) => {
-  const { botUsername = DEFAULT_BOT_USERNAME, threshold = 70, interests = '', keywords = '' } = req.body;
+  const { botUsername = DEFAULT_BOT_USERNAME, threshold = 70, interests = '', keywords = '', aiEnabled = false } = req.body;
   try {
     const entity = await req.telegram.client.getEntity(botUsername);
     const messages = await req.telegram.client.getMessages(entity, { limit: 1 });
@@ -342,9 +542,11 @@ app.post('/api/telegram/scan-once', requireClient, async (req, res) => {
     const media = await extractMessageMedia(req.telegram.client, message);
     const userInterests = normalizeList(interests);
     const stopWords = normalizeList(keywords);
-    const matchedInterests = findSimilarTerms(userInterests, text);
-    const matchedKeywords = findSimilarTerms(stopWords, text);
-    const percent = userInterests.length ? Math.round((matchedInterests.length / userInterests.length) * 100) : 0;
+    const { expandedInterests, expandedKeywords, analysis } = await buildSemanticAnalysis({ text, media, interests: userInterests, keywords: stopWords, aiEnabled });
+    const matchedInterests = findSimilarTerms(expandedInterests, text);
+    const matchedKeywords = findSimilarTerms(expandedKeywords, text);
+    const basePercent = userInterests.length ? Math.round((matchedInterests.length / userInterests.length) * 100) : 0;
+    const percent = Math.min(100, basePercent + analysis.bonusPoints);
     const shouldStop = percent >= Number(threshold) || matchedKeywords.length > 0;
 
     if (!shouldStop) {
@@ -354,6 +556,9 @@ app.post('/api/telegram/scan-once', requireClient, async (req, res) => {
     res.json({
       text,
       percent,
+      basePercent,
+      aiBonus: analysis.bonusPoints,
+      aiAnalysis: analysis,
       matchedInterests,
       matchedKeywords,
       media,

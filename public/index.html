@@ -78,6 +78,10 @@
               Ключові слова, які зупиняють пошук
               <textarea id="keywords" rows="3" placeholder="волонтерство, психологія">волонтерство, психологія, кавʼярні</textarea>
             </label>
+            <label class="checkbox-label">
+              <input id="aiEnabled" type="checkbox" checked />
+              AI-аналіз тексту, фото, виконавців, ігор, жанрів і перекладів
+            </label>
             <div class="button-row">
               <button type="submit" class="primary" id="startBtn" disabled>Почати пошук</button>
               <button type="button" id="pauseBtn">Пауза</button>
@@ -110,6 +114,7 @@
             </div>
             <progress id="matchProgress" max="100" value="0"></progress>
             <p id="matchReason">Причина зупинки зʼявиться тут.</p>
+            <p id="aiAnalysis" class="ai-analysis"></p>
           </div>
 
           <div class="manual-actions" id="manualActions" hidden>

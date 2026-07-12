@@ -93,3 +93,20 @@ progress::-webkit-progress-value { background: linear-gradient(90deg, var(--acce
   color: var(--muted);
   font-size: .92rem;
 }
+
+.checkbox-label {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  color: var(--text);
+}
+.checkbox-label input {
+  width: 18px;
+  height: 18px;
+}
+.ai-analysis {
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(6, 182, 212, .10);
+  color: var(--text) !important;
+  border: 1px solid rgba(6, 182, 212, .22);
+}

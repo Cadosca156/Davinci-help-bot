@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DaVinci Match Helper</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Telegram Web Helper</p>
+          <h1>DaVinci Match Helper</h1>
+          <p class="hero-text">
+            Підключіть власний Telegram акаунт через API ID/API Hash, налаштуйте відсоток збігу та ключові слова,
+            а додаток буде читати останню анкету в боті й зупинятись для ручного рішення.
+          </p>
+        </div>
+        <div class="status-card" aria-live="polite">
+          <span class="status-dot" id="statusDot"></span>
+          <div>
+            <strong id="statusTitle">Telegram не підключено</strong>
+            <p id="statusText">Введіть доступ у блоці Telegram та підтвердьте кодом.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="layout">
+        <aside class="panel controls">
+          <form id="telegramForm" class="stack">
+            <h2>Доступ до Telegram</h2>
+            <p class="hint">API ID та API Hash беруться на <a href="https://my.telegram.org/apps" target="_blank" rel="noreferrer">my.telegram.org/apps</a>. Дані потрібні, щоб ваш акаунт міг читати бот і надсилати команди.</p>
+            <label>
+              API ID
+              <input id="apiId" inputmode="numeric" autocomplete="off" placeholder="123456" />
+            </label>
+            <label>
+              API Hash
+              <input id="apiHash" autocomplete="off" placeholder="0123456789abcdef0123456789abcdef" />
+            </label>
+            <label>
+              Номер телефону Telegram
+              <input id="phone" autocomplete="tel" placeholder="+380XXXXXXXXX" />
+            </label>
+            <button type="submit" class="primary">Надіслати код</button>
+          </form>
+
+          <form id="codeForm" class="stack" hidden>
+            <label>
+              Код із Telegram
+              <input id="code" autocomplete="one-time-code" placeholder="12345" />
+            </label>
+            <label>
+              Пароль 2FA, якщо увімкнено
+              <input id="password" type="password" autocomplete="current-password" />
+            </label>
+            <button type="submit" class="primary">Підключити Telegram</button>
+          </form>
+
+          <form id="settingsForm" class="stack">
+            <h2>Критерії пошуку</h2>
+            <p class="hint">Пошук враховує регістр, апострофи, схожі слова та прості українські відмінки: наприклад «подорожі», «подорожами», «подорожувати».</p>
+            <label>
+              Username бота
+              <input id="botUsername" value="leomatchbot" placeholder="leomatchbot" />
+            </label>
+            <label>
+              Мінімальний відсоток збігу
+              <input id="threshold" type="range" min="10" max="100" value="72" />
+              <output id="thresholdValue">72%</output>
+            </label>
+            <label>
+              Інтереси для порівняння
+              <textarea id="interests" rows="4" placeholder="музика, подорожі, спорт, книги">музика, подорожі, спорт, книги</textarea>
+            </label>
+            <label>
+              Ключові слова, які зупиняють пошук
+              <textarea id="keywords" rows="3" placeholder="волонтерство, психологія">волонтерство, психологія, кавʼярні</textarea>
+            </label>
+            <div class="button-row">
+              <button type="submit" class="primary" id="startBtn" disabled>Почати пошук</button>
+              <button type="button" id="pauseBtn">Пауза</button>
+              <button type="button" id="logoutBtn">Вийти</button>
+            </div>
+          </form>
+        </aside>
+
+        <section class="panel profile-panel">
+          <div class="scanner-header">
+            <h2>Остання анкета з Telegram</h2>
+            <span id="scanCounter">0 перевірено</span>
+          </div>
+
+          <article class="profile-card" id="profileCard">
+            <div class="avatar" id="avatar">TG</div>
+            <div class="profile-info">
+              <h3 id="profileName">Очікує підключення</h3>
+              <p id="profileMeta">Після входу натисніть /start, а потім «Почати пошук».</p>
+              <p id="profileBio"></p>
+            </div>
+          </article>
+
+          <div class="media-gallery" id="mediaGallery" hidden></div>
+
+          <div class="match-box">
+            <div>
+              <span>Збіг</span>
+              <strong id="matchPercent">0%</strong>
+            </div>
+            <progress id="matchProgress" max="100" value="0"></progress>
+            <p id="matchReason">Причина зупинки зʼявиться тут.</p>
+          </div>
+
+          <div class="manual-actions" id="manualActions" hidden>
+            <button type="button" class="like" data-action="like">Лайкнути</button>
+            <button type="button" class="skip" data-action="skip">Пролистати</button>
+            <button type="button" class="message" data-action="message">Написати</button>
+          </div>
+
+          <form class="message-form" id="messageForm" hidden>
+            <label>
+              Повідомлення в бот
+              <textarea id="customMessage" rows="3" placeholder="Привіт! 👋"></textarea>
+            </label>
+            <button type="submit" class="primary">Надіслати текст</button>
+          </form>
+        </section>
+      </section>
+
+      <section class="panel log-panel">
+        <h2>Журнал</h2>
+        <ul id="eventLog"></ul>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
